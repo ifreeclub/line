@@ -2,37 +2,28 @@
  * 미담사진관 손님용 태블릿 웹 백엔드
  * Google Apps Script Web App - doGet/doPost JSON API
  *
- * 배포 방법:
- * 1. script.google.com -> 새 프로젝트
- * 2. 이 파일 내용 붙여넣기
- * 3. SHEET_ID를 실제 구글시트 ID로 교체
- * 4. 배포 -> 새 배포 -> 유형: 웹 앱
- *    - 실행: 나
- *    - 액세스: 모든 사용자
- * 5. 배포 URL을 프론트엔드 config.js에 입력
- *
- * 2호점 복사 방법:
- * - 이 프로젝트를 파일 복사
- * - SHEET_ID만 교체
- * - 재배포 -> 새 URL 획득
+ * v1.2.0 변경사항:
+ * - appendRow 대신 ID 컬럼 기반 실제 마지막 데이터 행 탐색 후 직접 setValues
+ *   (AppSheet가 빈 서식만 남긴 빈 행들 사이에 끼어드는 현상 해결)
+ * - 한국 휴대폰 번호 엄격 검증 (010 + 11자리)
+ * - 저장된 번호 11자리 아닌 경우 STORED_PHONE_CORRUPTED 에러 반환
  */
 
 // ============================================================
-// 설정값 (2호점 복사 시 여기만 수정)
+// 설정값
 // ============================================================
 const CONFIG = {
-  SHEET_ID: '11kcBZRYG1aqNn9qJEUqhHILy2sFTOSywZVOnUeLyi5k',   // 구글시트 ID (URL의 /d/ 뒤 문자열)
-  SHEET_NAME: '미담_앱접수',                 // 시트 탭 이름
-  API_TOKEN: 'midam-2026-secret-token',    // 간이 API 토큰 (프론트와 일치시킴)
-  DEFAULT_STATUS: '촬영',                  // 신규 접수 기본 상황값
-  EXCLUDE_STATUS: ['완료', '취소']         // 대기리스트에서 제외할 상황값
+  SHEET_ID: '1NodYqJ2xufeO2pJpeKAdeuXn5UNIca0I-1nWTatFPPc',
+  SHEET_NAME: '미담_앱접수',
+  API_TOKEN: 'midam-2026-secret-token',
+  DEFAULT_STATUS: '촬영',
+  EXCLUDE_STATUS: ['완료', '취소']
 }
 
-// 구글시트 컬럼 순서 - 시트 첫 행과 정확히 일치해야 함
 const COLUMNS = ['ID', '날짜', '상품', '상황', '이름', '전화번호', '이메일', '파일명', '인증키']
 
 // ============================================================
-// 엔트리포인트 - GET/POST 라우팅
+// 엔트리포인트
 // ============================================================
 
 function doGet(e) {
@@ -52,19 +43,16 @@ function handleRequest(e, method) {
       params = e.parameter || {}
       action = params.action || ''
     } else {
-      // POST - text/plain으로 받아서 CORS preflight 회피
       if (e.postData && e.postData.contents) {
         params = JSON.parse(e.postData.contents)
         action = params.action || ''
       }
     }
 
-    // 토큰 검증 (간이 인증 - 완전한 인증은 아니지만 우발적 악용 방지)
     if (params.token !== CONFIG.API_TOKEN) {
       return jsonResponse({ ok: false, error: 'UNAUTHORIZED' })
     }
 
-    // 액션 라우팅
     switch (action) {
       case 'list':
         return jsonResponse(listWaiting())
@@ -75,7 +63,7 @@ function handleRequest(e, method) {
       case 'update':
         return jsonResponse(updateEntry(params.id, params.data, params.last4))
       case 'ping':
-        return jsonResponse({ ok: true, version: '1.1.0', time: new Date().toISOString() })
+        return jsonResponse({ ok: true, version: '1.2.0', time: new Date().toISOString() })
       default:
         return jsonResponse({ ok: false, error: 'UNKNOWN_ACTION' })
     }
@@ -108,10 +96,6 @@ function getSheet() {
   return sheet
 }
 
-/**
- * 시트의 첫 행(헤더)을 읽어서 컬럼명 -> 인덱스 맵 생성
- * 컬럼 순서가 바뀌어도 동작하게끔 헤더 기반으로 조회
- */
 function getHeaderMap(sheet) {
   const lastCol = sheet.getLastColumn()
   if (lastCol === 0) {
@@ -120,9 +104,55 @@ function getHeaderMap(sheet) {
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
   const map = {}
   headers.forEach((h, idx) => {
-    map[String(h).trim()] = idx   // 0-based index
+    map[String(h).trim()] = idx
   })
   return { map: map, headers: headers, lastCol: lastCol }
+}
+
+/**
+ * ID 컬럼에 실제 값이 있는 마지막 행 번호를 반환 (1-based)
+ * AppSheet가 남긴 빈 서식/포맷 행을 무시하고 실제 데이터 기준으로 판단
+ *
+ * 반환: 실제 데이터가 있는 마지막 행 번호 (없으면 1=헤더만 있음)
+ */
+function findLastDataRow(sheet) {
+  const lastRow = sheet.getLastRow()
+  if (lastRow < 2) return 1   // 헤더만 있거나 빈 시트
+
+  const { map } = getHeaderMap(sheet)
+  const idIdx = map['ID']
+  if (idIdx === undefined) throw new Error('ID 컬럼을 찾을 수 없습니다')
+
+  // ID 컬럼 전체 값을 한 번에 읽어서 뒤에서부터 탐색 (성능)
+  const idColValues = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues()
+
+  for (let i = idColValues.length - 1; i >= 0; i--) {
+    const value = String(idColValues[i][0] || '').trim()
+    if (value !== '') {
+      return i + 2   // 0-index + 헤더(1행) 보정
+    }
+  }
+  return 1   // 모두 비어있음 - 헤더 다음 행부터 시작
+}
+
+// ============================================================
+// 전화번호 유효성 검증
+// ============================================================
+
+function validateKoreanMobile(phone) {
+  const digits = String(phone || '').replace(/\D/g, '')
+
+  if (digits.length === 0) return { ok: false, error: 'PHONE_REQUIRED' }
+  if (digits.length !== 11) return { ok: false, error: 'PHONE_INVALID_LENGTH' }
+  if (!digits.startsWith('010')) return { ok: false, error: 'PHONE_INVALID_PREFIX' }
+
+  return { ok: true, digits: digits }
+}
+
+function normalizeKoreanMobile(phone) {
+  const digits = String(phone || '').replace(/\D/g, '')
+  if (digits.length !== 11) return phone
+  return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7, 11)
 }
 
 // ============================================================
@@ -153,7 +183,6 @@ function listWaiting() {
     const row = data[i]
     const status = String(row[statusIdx] || '').trim()
 
-    // 완료/취소는 제외
     if (CONFIG.EXCLUDE_STATUS.indexOf(status) !== -1) continue
 
     const id = String(row[idIdx] || '').trim()
@@ -167,32 +196,9 @@ function listWaiting() {
     })
   }
 
-  // 최근 등록이 위에 오게 역순 정렬 (시트는 append 되므로 뒤쪽이 최신)
   list.reverse()
 
   return { ok: true, list: list, count: list.length }
-}
-
-// ============================================================
-// 전화번호 유효성 검증 헬퍼
-// 한국 휴대폰 형식: 010-XXXX-XXXX (총 11자리 숫자, 010으로 시작)
-// ============================================================
-
-function validateKoreanMobile(phone) {
-  const digits = String(phone || '').replace(/\D/g, '')
-
-  if (digits.length === 0) return { ok: false, error: 'PHONE_REQUIRED' }
-  if (digits.length !== 11) return { ok: false, error: 'PHONE_INVALID_LENGTH' }
-  if (!digits.startsWith('010')) return { ok: false, error: 'PHONE_INVALID_PREFIX' }
-
-  return { ok: true, digits: digits }
-}
-
-// 하이픈 포함 표준 포맷으로 정규화: 010-XXXX-XXXX
-function normalizeKoreanMobile(phone) {
-  const digits = String(phone || '').replace(/\D/g, '')
-  if (digits.length !== 11) return phone   // 검증 실패 시 원본 반환 (validate에서 거르므로 이 경로는 안전)
-  return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7, 11)
 }
 
 // ============================================================
@@ -204,29 +210,24 @@ function createEntry(data) {
     return { ok: false, error: 'INVALID_DATA' }
   }
 
-  // 서버사이드 검증
   const name = sanitize(data.name)
   const phone = sanitize(data.phone)
   const email = sanitize(data.email || '')
 
   if (!name) return { ok: false, error: 'NAME_REQUIRED' }
 
-  // 한국 휴대폰 형식 엄격 검증
   const phoneCheck = validateKoreanMobile(phone)
   if (!phoneCheck.ok) return phoneCheck
 
-  // 표준 포맷으로 정규화하여 저장
   const normalizedPhone = normalizeKoreanMobile(phone)
 
-  // LockService로 동시성 제어 (동시 등록 시 행 충돌 방지)
   const lock = LockService.getScriptLock()
   try {
-    lock.waitLock(10000)   // 최대 10초 대기
+    lock.waitLock(10000)
 
     const sheet = getSheet()
-    const { map, headers } = getHeaderMap(sheet)
+    const { map, headers, lastCol } = getHeaderMap(sheet)
 
-    // 새 행 구성 - 헤더 순서대로
     const newRow = new Array(headers.length).fill('')
     const id = generateAppSheetCompatibleId()
     const today = formatDateYYMMDD(new Date())
@@ -241,9 +242,12 @@ function createEntry(data) {
     if (map['파일명'] !== undefined) newRow[map['파일명']] = ''
     if (map['인증키'] !== undefined) newRow[map['인증키']] = ''
 
-    sheet.appendRow(newRow)
+    // appendRow 대신 실제 데이터 기준 다음 행에 직접 삽입
+    // (AppSheet가 남긴 빈 서식 행 무시)
+    const targetRow = findLastDataRow(sheet) + 1
+    sheet.getRange(targetRow, 1, 1, lastCol).setValues([newRow])
 
-    return { ok: true, id: id, name: name, date: today }
+    return { ok: true, id: id, name: name, date: today, rowIndex: targetRow }
   } catch (err) {
     Logger.log('createEntry error: ' + err.stack)
     return { ok: false, error: 'CREATE_FAILED', message: String(err) }
@@ -267,7 +271,6 @@ function verifyPhone(id, last4) {
 
   const phoneDigits = String(row.data['전화번호'] || '').replace(/\D/g, '')
 
-  // 저장된 번호가 정상 11자리가 아닐 경우 디버깅을 위한 에러 분리
   if (phoneDigits.length !== 11) {
     Logger.log('verifyPhone: 비정상 저장 번호 id=' + id + ' digits=[' + phoneDigits + '] length=' + phoneDigits.length)
     return { ok: false, error: 'STORED_PHONE_CORRUPTED', debug: phoneDigits.length }
@@ -279,7 +282,6 @@ function verifyPhone(id, last4) {
     return { ok: false, error: 'LAST4_MISMATCH' }
   }
 
-  // 인증 성공 - 현재 정보 반환 (수정 화면 prefill용)
   return {
     ok: true,
     id: id,
@@ -290,20 +292,18 @@ function verifyPhone(id, last4) {
 }
 
 // ============================================================
-// 액션 4 - 정보 수정 (인증 재검증 포함)
+// 액션 4 - 정보 수정
 // ============================================================
 
 function updateEntry(id, data, last4) {
   if (!id || !data || !last4) return { ok: false, error: 'INVALID_PARAMS' }
 
-  // 재인증 (중간자 공격 방지 - 인증 후 수정 사이에 다시 한 번 확인)
   const verifyResult = verifyPhone(id, last4)
   if (!verifyResult.ok) return verifyResult
 
   const phone = sanitize(data.phone)
   const email = sanitize(data.email || '')
 
-  // 한국 휴대폰 형식 엄격 검증 (신규 번호에도 동일 적용)
   const phoneCheck = validateKoreanMobile(phone)
   if (!phoneCheck.ok) return phoneCheck
 
@@ -318,7 +318,6 @@ function updateEntry(id, data, last4) {
     const row = findRowById(id)
     if (!row) return { ok: false, error: 'NOT_FOUND' }
 
-    // 이름은 수정 불가 - 전화번호/이메일만 업데이트
     if (map['전화번호'] !== undefined) {
       sheet.getRange(row.rowIndex, map['전화번호'] + 1).setValue(normalizedPhone)
     }
@@ -358,7 +357,7 @@ function findRowById(id) {
         rowObj[String(h).trim()] = data[i][idx]
       })
       return {
-        rowIndex: i + 2,   // 시트 기준 실제 행 번호 (1-based + 헤더 1행)
+        rowIndex: i + 2,
         data: rowObj
       }
     }
@@ -374,16 +373,15 @@ function sanitize(value) {
   if (value === null || value === undefined) return ''
   return String(value)
     .trim()
-    .replace(/[\x00-\x1F\x7F]/g, '')   // 제어 문자 제거
-    .slice(0, 200)                      // 최대 길이 제한
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .slice(0, 200)
 }
 
 // ============================================================
-// 헬퍼 - AppSheet 호환 ID 생성 (8자리 영숫자)
+// 헬퍼 - AppSheet 호환 ID 생성
 // ============================================================
 
 function generateAppSheetCompatibleId() {
-  // AppSheet UNIQUEID()와 동일한 형식: 8자리 대소문자 영숫자
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   let id = ''
   for (let i = 0; i < 8; i++) {
@@ -394,23 +392,19 @@ function generateAppSheetCompatibleId() {
 
 // ============================================================
 // 헬퍼 - 날짜 포맷 (YY-MM-DD)
-// Date 객체 / "YY-MM-DD" 문자열 / 기타 문자열 전부 처리
 // ============================================================
 
 function formatDateYYMMDD(value) {
   if (!value) return ''
 
-  // 이미 YY-MM-DD 형식이면 그대로 반환
   if (typeof value === 'string') {
     const trimmed = value.trim()
     if (/^\d{2}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
-    // 다른 문자열이면 Date 파싱 시도
     const parsed = new Date(trimmed)
     if (isNaN(parsed.getTime())) return trimmed
     return dateToYYMMDD(parsed)
   }
 
-  // Date 객체
   if (value instanceof Date) {
     return dateToYYMMDD(value)
   }
@@ -426,7 +420,7 @@ function dateToYYMMDD(date) {
 }
 
 // ============================================================
-// 개발용 - 수동 테스트
+// 개발/운영 유틸
 // ============================================================
 
 function testList() {
@@ -441,15 +435,13 @@ function testCreate() {
   }), null, 2))
 }
 
-function testVerify() {
-  const list = listWaiting()
-  if (list.list.length > 0) {
-    const firstId = list.list[0].id
-    Logger.log(JSON.stringify(verifyPhone(firstId, '5678'), null, 2))
-  }
+function testFindLastDataRow() {
+  const sheet = getSheet()
+  const result = findLastDataRow(sheet)
+  Logger.log('실제 마지막 데이터 행: ' + result)
+  Logger.log('sheet.getLastRow(): ' + sheet.getLastRow())
 }
 
-// 특정 ID의 저장 상태 진단용
 function testInspectRow() {
   const targetId = 'uFgqcZ2S'   // 문제 있는 ID로 교체해서 사용
   const row = findRowById(targetId)
@@ -457,8 +449,159 @@ function testInspectRow() {
     Logger.log('행 없음: ' + targetId)
     return
   }
+  Logger.log('rowIndex: ' + row.rowIndex)
   Logger.log('전화번호 원본: [' + row.data['전화번호'] + ']')
   const digits = String(row.data['전화번호'] || '').replace(/\D/g, '')
   Logger.log('숫자만: [' + digits + '] length=' + digits.length)
   Logger.log('끝4자리: [' + digits.slice(-4) + ']')
+}
+
+/**
+ * ⚠️ 운영 유틸 - 빈 행 정리
+ * 데이터 행(ID 값 있는 행) 사이사이 및 마지막 뒤쪽에 있는 빈 서식 행을 삭제
+ *
+ * 실행 방법:
+ * 1. 함수 드롭다운 -> cleanupEmptyRows 선택 -> 실행
+ * 2. 반드시 시트 백업 후 실행 (Apps Script 에디터에서 수동 확인 후 실행)
+ *
+ * 동작:
+ * - findLastDataRow() 뒤쪽에 있는 모든 빈 행 삭제
+ * - 데이터 행 사이에 낀 빈 행은 건드리지 않음 (AppSheet 레코드 삭제 흔적일 수 있음)
+ */
+function cleanupEmptyRows() {
+  const sheet = getSheet()
+  const lastRow = sheet.getLastRow()
+  const lastDataRow = findLastDataRow(sheet)
+
+  Logger.log('현재 sheet.getLastRow(): ' + lastRow)
+  Logger.log('실제 마지막 데이터 행: ' + lastDataRow)
+
+  if (lastRow <= lastDataRow) {
+    Logger.log('정리할 빈 행 없음')
+    return
+  }
+
+  const rowsToDelete = lastRow - lastDataRow
+  Logger.log('삭제할 빈 행 수: ' + rowsToDelete + ' (' + (lastDataRow + 1) + '행~' + lastRow + '행)')
+
+  // 실제 삭제 (⚠️ 실행 시 되돌릴 수 없음)
+  sheet.deleteRows(lastDataRow + 1, rowsToDelete)
+
+  Logger.log('✅ 정리 완료. 새 getLastRow(): ' + sheet.getLastRow())
+}
+
+/**
+ * ⚠️ 실행 전 반드시 구글시트 백업 필수!
+ *
+ * 데이터 행 사이에 낀 빈 행들을 압축(삭제)하는 유틸
+ *
+ * 동작 방식:
+ * 1. 모든 행을 훑으면서 ID 컬럼에 값이 있는지 확인
+ * 2. ID가 빈 행들을 찾아서 삭제 목록 생성
+ * 3. 뒤에서부터 삭제 (앞에서 삭제하면 행 번호가 밀려서 오류)
+ *
+ * 안전장치:
+ * - dryRun 모드 기본값 true (실제 삭제 안 하고 로그만)
+ * - false로 바꿔야 실제 삭제 실행
+ * - 삭제 전 최종 삭제 대상 행 수를 로그에 출력
+ */
+function compactEmptyRows() {
+  const DRY_RUN = true   // ⚠️ 실제 삭제하려면 false로 변경 후 재실행
+
+  const sheet = getSheet()
+  const lastRow = sheet.getLastRow()
+  if (lastRow < 2) {
+    Logger.log('데이터 없음 - 정리할 행 없음')
+    return
+  }
+
+  const { map } = getHeaderMap(sheet)
+  const idIdx = map['ID']
+  if (idIdx === undefined) throw new Error('ID 컬럼 없음')
+
+  // 전체 ID 컬럼 값 로드 (2행 ~ lastRow)
+  const idValues = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues()
+
+  // 빈 행 번호 수집 (실제 시트 기준 1-based)
+  const emptyRowNumbers = []
+  for (let i = 0; i < idValues.length; i++) {
+    const value = String(idValues[i][0] || '').trim()
+    if (value === '') {
+      emptyRowNumbers.push(i + 2)   // 0-index + 헤더 보정
+    }
+  }
+
+  Logger.log('=== compactEmptyRows 진단 ===')
+  Logger.log('DRY_RUN 모드: ' + DRY_RUN)
+  Logger.log('전체 행 수 (데이터 영역): ' + (lastRow - 1))
+  Logger.log('빈 행 개수: ' + emptyRowNumbers.length)
+  Logger.log('데이터 행 개수: ' + (lastRow - 1 - emptyRowNumbers.length))
+
+  if (emptyRowNumbers.length === 0) {
+    Logger.log('삭제할 빈 행 없음 - 종료')
+    return
+  }
+
+  // 빈 행의 연속 구간 요약 (로그 가독성)
+  Logger.log('')
+  Logger.log('--- 빈 행 연속 구간 ---')
+  let rangeStart = emptyRowNumbers[0]
+  let rangeEnd = emptyRowNumbers[0]
+  for (let i = 1; i < emptyRowNumbers.length; i++) {
+    if (emptyRowNumbers[i] === rangeEnd + 1) {
+      rangeEnd = emptyRowNumbers[i]
+    } else {
+      Logger.log(rangeStart + '행 ~ ' + rangeEnd + '행 (' + (rangeEnd - rangeStart + 1) + '행)')
+      rangeStart = emptyRowNumbers[i]
+      rangeEnd = emptyRowNumbers[i]
+    }
+  }
+  Logger.log(rangeStart + '행 ~ ' + rangeEnd + '행 (' + (rangeEnd - rangeStart + 1) + '행)')
+
+  if (DRY_RUN) {
+    Logger.log('')
+    Logger.log('⚠️ DRY_RUN 모드 - 실제 삭제 안 됨')
+    Logger.log('실제 삭제하려면 compactEmptyRows 함수의 DRY_RUN = false 로 변경 후 재실행')
+    return
+  }
+
+  // 실제 삭제 - 뒤에서부터 (앞에서 삭제하면 행 번호가 밀림)
+  Logger.log('')
+  Logger.log('=== 실제 삭제 시작 ===')
+  const lock = LockService.getScriptLock()
+  try {
+    lock.waitLock(30000)
+
+    // 연속 구간으로 묶어서 삭제 (삭제 횟수 최소화)
+    const ranges = []
+    let s = emptyRowNumbers[0]
+    let e = emptyRowNumbers[0]
+    for (let i = 1; i < emptyRowNumbers.length; i++) {
+      if (emptyRowNumbers[i] === e + 1) {
+        e = emptyRowNumbers[i]
+      } else {
+        ranges.push({ start: s, end: e })
+        s = emptyRowNumbers[i]
+        e = emptyRowNumbers[i]
+      }
+    }
+    ranges.push({ start: s, end: e })
+
+    // 뒤에서부터 삭제
+    ranges.reverse()
+    for (const r of ranges) {
+      const count = r.end - r.start + 1
+      sheet.deleteRows(r.start, count)
+      Logger.log('삭제 완료: ' + r.start + '행부터 ' + count + '행')
+    }
+
+    Logger.log('')
+    Logger.log('✅ 모든 빈 행 삭제 완료')
+    Logger.log('새 getLastRow(): ' + sheet.getLastRow())
+  } catch (err) {
+    Logger.log('❌ 삭제 실패: ' + err.message)
+    throw err
+  } finally {
+    try { lock.releaseLock() } catch (e) {}
+  }
 }
