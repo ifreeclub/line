@@ -1,7 +1,7 @@
 {
-  "name": "미담사진관",
-  "short_name": "미담",
-  "description": "미담사진관 손님용 접수 시스템",
+  "name": "라인사진관",
+  "short_name": "라인",
+  "description": "라인사진관 손님용 접수 시스템",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
