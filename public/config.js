@@ -1,5 +1,5 @@
 /**
- * 미담사진관 태블릿 웹 - 설정 파일
+ * 라인사진관 태블릿 웹 - 설정 파일
  *
  * 2호점 복사 시 이 파일만 수정:
  * 1. APPS_SCRIPT_URL - 새로 배포한 Apps Script Web App URL
