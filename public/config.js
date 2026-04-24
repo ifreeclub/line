@@ -13,10 +13,10 @@ window.APP_CONFIG = {
   APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxwQmoibcHcPyJUkvDf06IzRBdGR7VDkJO4Tafo_jIceoD3ATbEZZi5oF3i7hcxbPhH2A/exec',
 
   // Apps Script CONFIG.API_TOKEN과 반드시 동일 문자열
-  API_TOKEN: 'midam-2026-secret-token',
+  API_TOKEN: 'line-2026-secret-token',
 
   // 매장명
-  SHOP_NAME: '미담사진관',
+  SHOP_NAME: '라인사진관',
 
   // 디버그 모드 - border 표시 여부 (개발 중 true / 배포 시 false)
   DEBUG_BORDER: false,
