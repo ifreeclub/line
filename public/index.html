@@ -17,6 +17,21 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <title>라인사진관</title>
+      <style>
+      * {
+        -webkit-user-select: none !important;
+        -webkit-touch-callout: none !important; /* 공유/인쇄 팝업 방지 */
+        user-select: none !important;
+      }
+      input, textarea {
+        -webkit-user-select: text !important; /* 입력창은 허용 */
+        user-select: text !important;
+      }
+    </style>
+    <script>
+      // 길게 눌렀을 때 시스템 메뉴 뜨는 것을 원천 봉쇄
+      window.oncontextmenu = function() { return false; };
+    </script>
 </head>
 
 <body>
