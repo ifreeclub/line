@@ -90,7 +90,7 @@
     // 7자리 / 11자리는 반드시 010으로 시작
  //   if ((digits.length === 7 || digits.length === 11) && !digits.startsWith('010')) return false
  //   return true
-  }
+//  }
 
  /* 84번 줄부터 수정 시작 */
 /* 7자리(010+4자리) 또는 11자리(010+8자리)만 허용 */
