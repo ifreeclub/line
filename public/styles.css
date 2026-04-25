@@ -64,10 +64,10 @@ input {
 
   /* 고객 지정 폰트 크기 */
   --fs-panel-header: 37px;
-  --fs-label: 19px;
+  --fs-label: 30px;
   --fs-notice: 30px;
   --fs-waitlist-name: 19px;
-  --fs-email-warning: 16px;
+  --fs-email-warning: 30px;
   --fs-waitlist-guide: 17px;
   --fs-auth-header: 21px;
   --fs-auth-body: 16px;
