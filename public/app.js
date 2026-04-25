@@ -93,19 +93,23 @@
   }
 
  /* 84번 줄부터 수정 시작 */
-const ALLOWED_PHONE_LENGTHS = [4, 8]; // 오로지 4자리와 8자리만 허용!
+/* 7자리(010+4자리) 또는 11자리(010+8자리)만 허용 */
+const ALLOWED_PHONE_LENGTHS = [7, 11]; 
 
-// 전화번호 검증 - 4자리 또는 8자리만 허용 (010 제외 버전)
 function isValidPhoneStrict(phone) {
-  const digits = extractDigits(phone);
-  
-  // 1. 허용된 자릿수(4 또는 8)가 아니면 무조건 탈락
-  if (!ALLOWED_PHONE_LENGTHS.includes(digits.length)) return false;
-  
-  // 2. 010으로 시작하는 번호(11자리 등)도 이제는 자릿수 컷에서 걸러지지만, 
-  // 혹시 몰라 더 깐깐하게 하려면 그대로 두거나 여기서 끝내면 됩니다.
-  
-  return true;
+    const digits = extractDigits(phone);
+
+    // 1. 허용된 자릿수(7 또는 11)가 아니면 탈락
+    if (!ALLOWED_PHONE_LENGTHS.includes(digits.length)) {
+        return false;
+    }
+
+    // 2. 무조건 '010'으로 시작해야 함
+    if (!digits.startsWith('010')) {
+        return false;
+    }
+
+    return true;
 }
 
   /**
