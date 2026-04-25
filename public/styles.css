@@ -256,7 +256,7 @@ body.debug-border .form-group {
 .form-input {
   width: 100%;
   padding: 12px 14px;
-  font-size: 30px;
+  font-size: 27px;
   border: 2px solid var(--color-gray-border);
   border-radius: 6px;
   background: var(--color-white);
@@ -296,7 +296,7 @@ body.debug-border .form-group {
 .btn {
   flex: 1;
   min-height: 52px;
-  font-size: 30px;
+  font-size: 27px;
   font-weight: 700;
   border-radius: 6px;
   transition: background 0.15s, opacity 0.15s;
