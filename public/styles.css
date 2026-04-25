@@ -63,7 +63,7 @@ input {
   --color-secondary: #95a5a6;
 
   /* 고객 지정 폰트 크기 */
-  --fs-panel-header: 21px;
+  --fs-panel-header: 25px;
   --fs-label: 19px;
   --fs-notice: 18px;
   --fs-waitlist-name: 19px;
