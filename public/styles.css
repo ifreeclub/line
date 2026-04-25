@@ -199,7 +199,8 @@ body.debug-border .form-group {
 /* ---- 패널 공통 헤더 ---- */
 .panel-header {
   height: var(--panel-header-height);
-  background: var(--color-navy);
+  /* --- background: var(--color-navy);  ----*/
+  background: #d86c03;
   color: var(--color-white);
   display: flex;
   align-items: center;
