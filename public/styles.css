@@ -20,13 +20,14 @@ body {
   height: 100%;
   overflow: hidden;
   -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-  user-select: none;
+  -webkit-touch-callout: none !important; /* 시스템 메뉴 강제 차단 */
+  -webkit-user-select: none !important;    /* 텍스트 선택 강제 차단 */
+  user-select: none !important;           /* 전체 선택 강제 차단 */
 }
 
-input {
-  user-select: text;
-  -webkit-user-select: text;
+input, textarea {
+  -webkit-user-select: text !important;   /* 입력창은 글자 써야 하니 예외 */
+  user-select: text !important;
 }
 
 body {
