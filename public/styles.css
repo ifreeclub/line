@@ -256,7 +256,7 @@ body.debug-border .form-group {
 .form-input {
   width: 100%;
   padding: 12px 14px;
-  font-size: 18px;
+  font-size: 30px;
   border: 2px solid var(--color-gray-border);
   border-radius: 6px;
   background: var(--color-white);
