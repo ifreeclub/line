@@ -84,13 +84,29 @@
   const ALLOWED_PHONE_LENGTHS = [4, 7, 8, 11]
 
   // 전화번호 검증 - 4/7/8/11 자리만 허용
-  function isValidPhoneStrict(phone) {
-    const digits = extractDigits(phone)
-    if (!ALLOWED_PHONE_LENGTHS.includes(digits.length)) return false
+  //function isValidPhoneStrict(phone) {
+ //   const digits = extractDigits(phone)
+ //   if (!ALLOWED_PHONE_LENGTHS.includes(digits.length)) return false
     // 7자리 / 11자리는 반드시 010으로 시작
-    if ((digits.length === 7 || digits.length === 11) && !digits.startsWith('010')) return false
-    return true
+ //   if ((digits.length === 7 || digits.length === 11) && !digits.startsWith('010')) return false
+ //   return true
   }
+
+ /* 84번 줄부터 수정 시작 */
+const ALLOWED_PHONE_LENGTHS = [4, 8]; // 오로지 4자리와 8자리만 허용!
+
+// 전화번호 검증 - 4자리 또는 8자리만 허용 (010 제외 버전)
+function isValidPhoneStrict(phone) {
+  const digits = extractDigits(phone);
+  
+  // 1. 허용된 자릿수(4 또는 8)가 아니면 무조건 탈락
+  if (!ALLOWED_PHONE_LENGTHS.includes(digits.length)) return false;
+  
+  // 2. 010으로 시작하는 번호(11자리 등)도 이제는 자릿수 컷에서 걸러지지만, 
+  // 혹시 몰라 더 깐깐하게 하려면 그대로 두거나 여기서 끝내면 됩니다.
+  
+  return true;
+}
 
   /**
    * 길이별 하이픈 자동 포맷
