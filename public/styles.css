@@ -65,7 +65,7 @@ input {
   /* 고객 지정 폰트 크기 */
   --fs-panel-header: 37px;
   --fs-label: 19px;
-  --fs-notice: 18px;
+  --fs-notice: 25px;
   --fs-waitlist-name: 19px;
   --fs-email-warning: 16px;
   --fs-waitlist-guide: 17px;
