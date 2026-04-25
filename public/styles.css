@@ -296,7 +296,7 @@ body.debug-border .form-group {
 .btn {
   flex: 1;
   min-height: 52px;
-  font-size: 18px;
+  font-size: 30px;
   font-weight: 700;
   border-radius: 6px;
   transition: background 0.15s, opacity 0.15s;
