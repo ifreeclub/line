@@ -93,18 +93,17 @@
 //  }
 
  /* 84번 줄부터 수정 시작 */
-/* 7자리(010+4자리) 또는 11자리(010+8자리)만 허용 */
-const ALLOWED_PHONE_LENGTHS = [7, 11]; 
-
+// 전화번호 검증 - 오직 010으로 시작하는 7자리 또는 11자리만 허용
 function isValidPhoneStrict(phone) {
     const digits = extractDigits(phone);
+    const ALLOWED_PHONE_LENGTHS = [7, 11]; 
 
-    // 1. 허용된 자릿수(7 또는 11)가 아니면 탈락
+    // 1. 자릿수 체크 (7자 또는 11자 아님 탈락)
     if (!ALLOWED_PHONE_LENGTHS.includes(digits.length)) {
         return false;
     }
 
-    // 2. 무조건 '010'으로 시작해야 함
+    // 2. 무조건 '010'으로 시작하는지 체크
     if (!digits.startsWith('010')) {
         return false;
     }
