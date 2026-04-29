@@ -318,7 +318,7 @@ body.debug-border .form-group {
 }
 
 .btn-primary:active {
-  background: var(--color-navy-hover);
+  /*--- background: var(--color-navy-hover); ----*/
   background: #d86c03;
 }
 
