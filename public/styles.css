@@ -319,6 +319,7 @@ body.debug-border .form-group {
 
 .btn-primary:active {
   background: var(--color-navy-hover);
+  background: #d86c03;
 }
 
 .btn-secondary {
