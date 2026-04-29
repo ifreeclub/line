@@ -52,8 +52,8 @@ input {
 
 /* ---- CSS 변수 ---- */
 :root {
-  --color-navy: #2c3e50;
-  --color-navy-hover: #34495e;
+  --color-navy: 2c3e50;
+  --color-navy-hover: 34495e;
   --color-white: #ffffff;
   --color-gray-border: #d0d7de;
   --color-gray-bg: #f5f7fa;
@@ -312,7 +312,8 @@ body.debug-border .form-group {
 }
 
 .btn-primary {
-  background: var(--color-navy);
+  /*-- background: var(--color-navy); --*/
+  background: #d86c03;
   color: var(--color-white);
 }
 
