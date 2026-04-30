@@ -261,7 +261,7 @@ body.debug-border .form-group {
   border-radius: 6px;
   background: var(--color-white);
   color: var(--color-navy);
-  background: #d7d7d7;
+  background: #ffffff;
   color: #010101;
   transition: border-color 0.15s;
 }
