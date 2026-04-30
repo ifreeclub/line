@@ -115,6 +115,7 @@ body.debug-border .form-group {
   height: calc(100vh - var(--top-header-height));
   width: 100%;
   overflow: hidden;
+  background-color: #010101;
 }
 
 /* 좌측 - 66% */
