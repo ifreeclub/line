@@ -428,6 +428,15 @@ body.debug-border .form-group {
   text-align: center;
 }
 
+/* 팝업창 전용 새로운 라벨 스타일 */
+.modal-label {
+  display: block;
+  font-size: var(--fs-label);
+  font-weight: 800;
+  color: #010101
+  margin-bottom: 8px;
+}
+
 .modal-input {
   font-size: 22px;
   text-align: center;
