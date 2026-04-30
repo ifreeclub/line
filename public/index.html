@@ -26,6 +26,22 @@
       input, textarea {
         -webkit-user-select: text !important; /* 입력창은 허용 */
         user-select: text !important;
+      /* 28번 줄 뒤에 입력 */
+     body, .main-layout, .panel-left, .panel-right, .top-header {
+       background-color: #010101 !important; /* 배경만 확실하게 검은색으로 */
+     }
+
+     /* 기본 글자색만 흰색으로 바꾸고, 오렌지색 등 별도 설정된 색은 건드리지 않음 */
+      h1, h2, label, .notice-text {
+      color: #ffffff !important; 
+      }
+
+     /* 입력창(input) 내부도 너무 밝지 않게 조절 (선택사항) */
+    .form-input {
+    background-color: #1a1a1a !important;
+    color: #ffffff !important;
+    border: 1px solid #333 !important;
+      }
       }
     </style>
     <script>
