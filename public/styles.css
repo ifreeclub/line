@@ -218,8 +218,7 @@ body.debug-border .form-group {
 .panel-body {
   flex: 1 1 auto;
   padding: 20px;
-  /* ---background: var(--color-white); ---- */
-  background: #010101;
+  background: var(--color-white);
 }
 
 /* 우측 패널 본문에만 스크롤 허용 */
@@ -240,7 +239,6 @@ body.debug-border .form-group {
   color: var(--color-navy);
   margin-bottom: 20px;
   text-align: center;
-  background: #010101;
 }
 
 .form-group {
