@@ -238,8 +238,7 @@ body.debug-border .form-group {
 .notice-text {
   font-size: var(--fs-notice);
   font-weight: 700;
-  /* -- color: var(--color-navy);  ---*/
-  color: #D7D7D7;
+  color: var(--color-navy);
   margin-bottom: 20px;
   text-align: center;
   background: #010101;
@@ -264,8 +263,7 @@ body.debug-border .form-group {
   border: 2px solid var(--color-gray-border);
   border-radius: 6px;
   background: var(--color-white);
-  /* -- color: var(--color-navy); --*/
-  color: #D7D7D7;
+  color: var(--color-navy);
   transition: border-color 0.15s;
 }
 
