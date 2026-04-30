@@ -261,6 +261,8 @@ body.debug-border .form-group {
   border-radius: 6px;
   background: var(--color-white);
   color: var(--color-navy);
+  background: #d7d7d7;
+  color: #010101;
   transition: border-color 0.15s;
 }
 
@@ -331,7 +333,7 @@ body.debug-border .form-group {
 /* ---- 대기리스트 ---- */
 .waitlist-guide {
   background: var(--color-white);
-  color: var(--color-blue);
+  color: #80f5fc;
   font-size: var(--fs-waitlist-guide);
   font-weight: 500;
   padding: 8px 10px;
@@ -349,12 +351,12 @@ body.debug-border .form-group {
 
 .waitlist-item {
   padding: 14px 16px;
-  background: var(--color-white);
+  background: #d7d7d7;
   border: 2px solid var(--color-gray-border);
   border-radius: 6px;
   font-size: var(--fs-waitlist-name);
   font-weight: 700;
-  color: var(--color-navy);
+  color: #010101;
   text-align: center;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
