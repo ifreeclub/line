@@ -266,6 +266,12 @@ body.debug-border .form-group {
   transition: border-color 0.15s;
 }
 
+/* 여기에 추가: 안내 문구(이름을 입력하세요 등) 색상 진하게 */
+.form-input::placeholder {
+  color: #535252;      /* 안내 문구 색상 (더 진하게 원하면 #000000) */
+  opacity: 1;                     /* 투명도 제거 */
+}
+   
 .form-input:focus {
   outline: none;
   border-color: var(--color-navy);
@@ -280,7 +286,7 @@ body.debug-border .form-group {
   margin-top: 8px;
   font-size: var(--fs-email-warning);
   font-weight: 700;
-  color: var(--color-red);
+  color: #ffde00;
   line-height: 1.5;
 }
 
@@ -326,7 +332,7 @@ body.debug-border .form-group {
 
 .btn-secondary {
   background: var(--color-gray-bg);
-  color: var(--color-navy);
+  color: #d7d7d7;
   border: 2px solid var(--color-gray-border);
 }
 
