@@ -236,7 +236,7 @@ body.debug-border .form-group {
 .notice-text {
   font-size: var(--fs-notice);
   font-weight: 700;
-  color: var(--color-navy);
+  color: #d7d7d7;
   margin-bottom: 20px;
   text-align: center;
 }
