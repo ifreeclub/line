@@ -249,8 +249,8 @@ body.debug-border .form-group {
   display: block;
   font-size: var(--fs-label);
   font-weight: 700;
-  color: #d7d7d7;
-  margin-bottom: 8px;
+  color: var(--color-navy);
+  margin-bottom: 0px;
 }
 
 .form-input {
@@ -283,11 +283,20 @@ body.debug-border .form-group {
 }
 
 .email-warning {
-  margin-top: 8px;
+  margin-top: 0px;
+  margin-bottom: 8px;
   font-size: var(--fs-email-warning);
   font-weight: 700;
-  color: #ffde00;
+  color: var(--color-red);
   line-height: 1.5;
+}
+
+.email-warning-text {
+  font-size: var(--fs-email-warning);
+  font-weight: 700;
+  color: #1b3491;
+  margin-left: 8px;
+  vertical-align: middle;
 }
 
 /* ---- 버튼 ---- */
