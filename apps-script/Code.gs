@@ -1,5 +1,5 @@
 /**
- * 미담사진관 손님용 태블릿 웹 백엔드
+ * 라인사진관 손님용 태블릿 웹 백엔드
  * Google Apps Script Web App - doGet/doPost JSON API
  *
  * v1.4.0 변경사항 (2026.04.20 3차 피드백):
@@ -26,9 +26,9 @@
 // 설정값
 // ============================================================
 const CONFIG = {
-  SHEET_ID: '11kcBZRYG1aqNn9qJEUqhHILy2sFTOSywZVOnUeLyi5k',
-  SHEET_NAME: '미담_앱접수',
-  API_TOKEN: 'midam-2026-secret-token',
+  SHEET_ID: '1jPb8UoJjmHnyYAG1YjHfctIr8JF3_bhTy8w2j_hYYdU',
+  SHEET_NAME: '라인_앱접수',
+  API_TOKEN: 'line-2026-secret-token',
   DEFAULT_STATUS: '촬영',
   EXCLUDE_STATUS: ['완료', '취소'],
 
@@ -37,7 +37,7 @@ const CONFIG = {
   // ==========================================================
   //
   // [고객 운영 맥락]
-  // 이 설정은 손님 태블릿 우측 "미담대기자" 리스트의 노출 순서를 제어합니다
+  // 이 설정은 손님 태블릿 우측 "라인대기자" 리스트의 노출 순서를 제어합니다
   //
   //   1) 평상시 (대부분의 날): 'asc' - 오래된순
   //      - 신규 손님이 하단에 노출됨
@@ -94,7 +94,7 @@ function handleRequest(e, method) {
       case 'list':
         return jsonResponse(listWaiting())
       case 'create':
-        return jsonResponse(createEntry(params.data))
+        return jsonResponse(createEntry(params.data, params.requestId))
       case 'verify':
         return jsonResponse(verifyPhone(params.id, params.last4))
       case 'update':
@@ -302,7 +302,27 @@ function listWaiting() {
 // 액션 2 - 신규 접수 등록
 // ============================================================
 
-function createEntry(data) {
+// 같은 등록 요청이 두 번 들어오면(응답 지연 후 재시도) 처음 결과를 돌려주고 행을 추가하지 않음
+const CREATE_DEDUP_TTL_SEC = 21600
+
+function normalizeRequestId(requestId) {
+  const rid = String(requestId || '').trim()
+  return /^[A-Za-z0-9-]{8,64}$/.test(rid) ? rid : ''
+}
+
+function getCachedCreate(cache, rid) {
+  if (!rid) return null
+  const hit = cache.get('create:' + rid)
+  if (!hit) return null
+  try { return JSON.parse(hit) } catch (e) { return null }
+}
+
+function createEntry(data, requestId) {
+  const rid = normalizeRequestId(requestId)
+  const cache = CacheService.getScriptCache()
+  const cached = getCachedCreate(cache, rid)
+  if (cached) return cached
+
   if (!data || typeof data !== 'object') {
     return { ok: false, error: 'INVALID_DATA' }
   }
@@ -324,6 +344,10 @@ function createEntry(data) {
   const lock = LockService.getScriptLock()
   try {
     lock.waitLock(10000)
+
+    // 락 대기 중 같은 요청이 먼저 처리됐을 수 있어 다시 확인
+    const cachedInLock = getCachedCreate(cache, rid)
+    if (cachedInLock) return cachedInLock
 
     const sheet = getSheet()
     const { map, headers, lastCol } = getHeaderMap(sheet)
@@ -356,7 +380,9 @@ function createEntry(data) {
 
     sheet.getRange(targetRow, 1, 1, lastCol).setValues([newRow])
 
-    return { ok: true, id: id, name: name, date: today, rowIndex: targetRow }
+    const result = { ok: true, id: id, name: name, date: today, rowIndex: targetRow }
+    if (rid) cache.put('create:' + rid, JSON.stringify(result), CREATE_DEDUP_TTL_SEC)
+    return result
   } catch (err) {
     Logger.log('createEntry error: ' + err.stack)
     return { ok: false, error: 'CREATE_FAILED', message: String(err) }

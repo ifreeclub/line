@@ -25,6 +25,7 @@
     authTarget: null,      // { id, name } - 현재 인증 중인 대기자
     verifiedLast4: null,   // 인증 성공한 끝4자리
     isSubmitting: false,
+    pendingCreate: null,   // { key, requestId } - 같은 입력 재전송 시 동일 requestId 재사용
     isLoading: false
   }
 
@@ -172,6 +173,13 @@ function isValidPhoneStrict(phone) {
   // API 호출
   // ============================================================
 
+  function newRequestId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID()
+    }
+    return 'r' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12)
+  }
+
   async function apiCall(action, data = {}) {
     const config = window.APP_CONFIG
 
@@ -293,8 +301,23 @@ function isValidPhoneStrict(phone) {
     els.btnSubmit.textContent = '등록 중...'
 
     try {
-      const result = await apiCall('create', { data: { name, phone, email } })
+      const key = [name, phone, email].join('|')
+      if (!state.pendingCreate || state.pendingCreate.key !== key) {
+        state.pendingCreate = { key: key, requestId: newRequestId() }
+      }
+      const payload = { data: { name, phone, email }, requestId: state.pendingCreate.requestId }
+
+      let result
+      try {
+        result = await apiCall('create', payload)
+      } catch (firstErr) {
+        // 응답 지연·일시 오류면 같은 requestId로 1회 재시도 -> 서버가 중복 행을 만들지 않음
+        const msg = String(firstErr && firstErr.message || '')
+        if (msg !== 'TIMEOUT' && !msg.startsWith('HTTP_') && msg !== 'Failed to fetch') throw firstErr
+        result = await apiCall('create', payload)
+      }
       if (!result.ok) throw new Error(result.error || 'CREATE_FAILED')
+      state.pendingCreate = null
       showToast('등록 완료', 'success')
       resetForm()
       await loadWaitlist()
