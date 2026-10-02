@@ -180,7 +180,27 @@ function isValidPhoneStrict(phone) {
     return 'r' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12)
   }
 
+  // 같은 요청을 다시 보내도 결과가 같은 작업은 일시 오류 시 1회 자동 재시도
+  // (구글 Apps Script가 간헐적으로 처리 후 404 페이지를 돌려주는 경우 대응)
+  const IDEMPOTENT_ACTIONS = ['list', 'verify', 'update', 'ping']
+
+  function isTransientError(err) {
+    const msg = String(err && err.message || '')
+    return msg === 'TIMEOUT' || msg.startsWith('HTTP_') || msg === 'Failed to fetch' ||
+      (err && err.name === 'SyntaxError')
+  }
+
   async function apiCall(action, data = {}) {
+    try {
+      return await apiCallOnce(action, data)
+    } catch (err) {
+      if (IDEMPOTENT_ACTIONS.indexOf(action) === -1 || !isTransientError(err)) throw err
+      await new Promise((r) => setTimeout(r, 1500))
+      return await apiCallOnce(action, data)
+    }
+  }
+
+  async function apiCallOnce(action, data = {}) {
     const config = window.APP_CONFIG
 
     if (!config || !config.APPS_SCRIPT_URL || config.APPS_SCRIPT_URL.includes('YOUR_DEPLOYMENT_ID')) {
