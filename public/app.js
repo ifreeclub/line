@@ -184,6 +184,21 @@ function isValidPhoneStrict(phone) {
   // (구글 Apps Script가 간헐적으로 처리 후 404 페이지를 돌려주는 경우 대응)
   const IDEMPOTENT_ACTIONS = ['list', 'verify', 'update', 'ping']
 
+  // 서버가 요청을 받았지만 시트 쪽 지연·잠금 대기로 처리하지 못한 경우 -> 다시 보내면 대부분 처리됨
+  const RETRYABLE_SERVER_ERRORS = ['BUSY', 'CREATE_FAILED', 'UPDATE_FAILED', 'SERVER_ERROR']
+
+  function serverError(result, fallback) {
+    const err = new Error((result && result.error) || fallback)
+    err.detail = result && result.message ? String(result.message) : ''
+    return err
+  }
+
+  function errorText(err) {
+    const text = translateError(err && err.message)
+    const detail = String((err && err.detail) || '').replace(/\s+/g, ' ').trim()
+    return detail ? text + '\n(' + detail.slice(0, 60) + ')' : text
+  }
+
   function isTransientError(err) {
     const msg = String(err && err.message || '')
     return msg === 'TIMEOUT' || msg.startsWith('HTTP_') || msg === 'Failed to fetch' ||
@@ -336,14 +351,19 @@ function isValidPhoneStrict(phone) {
         if (msg !== 'TIMEOUT' && !msg.startsWith('HTTP_') && msg !== 'Failed to fetch') throw firstErr
         result = await apiCall('create', payload)
       }
-      if (!result.ok) throw new Error(result.error || 'CREATE_FAILED')
+      if (!result.ok && RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
+        // 서버 처리 실패도 같은 requestId로 1회 재시도
+        await new Promise((r) => setTimeout(r, 1500))
+        result = await apiCall('create', payload)
+      }
+      if (!result.ok) throw serverError(result, 'CREATE_FAILED')
       state.pendingCreate = null
       showToast('등록 완료', 'success')
       resetForm()
       await loadWaitlist()
     } catch (err) {
       console.error('submit error:', err)
-      await showMessage('등록 실패\n' + translateError(err.message))
+      await showMessage('등록 실패\n' + errorText(err))
     } finally {
       state.isSubmitting = false
       els.btnSubmit.disabled = false
@@ -479,20 +499,26 @@ function isValidPhoneStrict(phone) {
     els.btnEditSave.disabled = true
 
     try {
-      const result = await apiCall('update', {
+      const updatePayload = {
         id: state.authTarget.id,
         last4: state.verifiedLast4,
         data: { phone, email }
-      })
+      }
+      let result = await apiCall('update', updatePayload)
+      if (!result.ok && RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
+        // 같은 값을 다시 쓰는 요청이라 1회 재시도해도 결과가 같음
+        await new Promise((r) => setTimeout(r, 1500))
+        result = await apiCall('update', updatePayload)
+      }
 
-      if (!result.ok) throw new Error(result.error || 'UPDATE_FAILED')
+      if (!result.ok) throw serverError(result, 'UPDATE_FAILED')
 
       showToast('수정 완료', 'success')
       closeEditModal()
       await loadWaitlist()
     } catch (err) {
       console.error('update error:', err)
-      await showMessage('수정 실패\n' + translateError(err.message))
+      await showMessage('수정 실패\n' + errorText(err))
     } finally {
       els.btnEditSave.disabled = false
     }
@@ -516,6 +542,7 @@ function isValidPhoneStrict(phone) {
       'TIMEOUT': '응답 시간 초과',
       'CONFIG_NOT_SET': '서버 설정이 필요합니다',
       'SERVER_ERROR': '서버 오류',
+      'BUSY': '접수가 몰려 처리하지 못했습니다 잠시 후 다시 눌러주세요',
       'CREATE_FAILED': '등록 중 오류 발생',
       'UPDATE_FAILED': '수정 중 오류 발생',
       'LOAD_FAILED': '불러오기 실패',
