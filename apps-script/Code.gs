@@ -513,8 +513,27 @@ function findRowById(id) {
   const idIdx = map['ID']
   if (idIdx === undefined) return null
 
-  const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
   const targetId = String(id).trim()
+  if (!targetId) return null
+
+  // ID 칸에서 바로 찾고 그 한 행만 읽는다 (접수 탭 전체를 읽지 않음)
+  const hit = sheet.getRange(2, idIdx + 1, lastRow - 1, 1)
+    .createTextFinder(targetId)
+    .matchCase(true)
+    .matchEntireCell(true)
+    .findNext()
+  if (hit) {
+    const rowIndex = hit.getRow()
+    const values = sheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0]
+    const rowObj = {}
+    headers.forEach((h, idx) => {
+      rowObj[String(h).trim()] = values[idx]
+    })
+    return { rowIndex: rowIndex, data: rowObj }
+  }
+
+  // ID 앞뒤에 공백이 섞인 예전 행 대비 - 못 찾았을 때만 전체를 확인
+  const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
 
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][idIdx]).trim() === targetId) {
