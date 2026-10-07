@@ -25,5 +25,6 @@ window.APP_CONFIG = {
   AUTO_REFRESH_MS: 30000,
 
   // 요청 타임아웃 (ms)
-  REQUEST_TIMEOUT_MS: 30000
+  // 요청 1번당 대기 시간 (실패하면 최대 3번까지 다시 보냄)
+  REQUEST_TIMEOUT_MS: 15000
 }

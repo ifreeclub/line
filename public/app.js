@@ -206,20 +206,26 @@ function isValidPhoneStrict(phone) {
       (err && err.name === 'SyntaxError')
   }
 
-  async function apiCall(action, data = {}) {
-    const canRetry = IDEMPOTENT_ACTIONS.indexOf(action) !== -1
+  // 구글 웹앱은 가끔 요청 하나가 30초 넘게 멈추거나 404로 끝나고, 바로 다시 보낸 요청은 대부분 정상 처리된다
+  // 그래서 한 번에 오래 기다리기보다 짧게 끊고 최대 3번까지 보낸다
+  const MAX_ATTEMPTS = 3
+
+  // retry: 같은 요청을 다시 보내도 결과가 같은 경우만 true (등록은 requestId로 서버가 중복을 막아 true로 호출)
+  async function apiCall(action, data = {}, opts = {}) {
+    const canRetry = opts.retry !== undefined ? opts.retry : IDEMPOTENT_ACTIONS.indexOf(action) !== -1
+    const maxAttempts = canRetry ? MAX_ATTEMPTS : 1
     for (let attempt = 1; ; attempt++) {
       try {
         const result = await apiCallOnce(action, data)
-        // 서버가 받았지만 처리하지 못한 응답도 1회 다시 보낸다
-        if (canRetry && attempt < 2 && result && result.ok === false &&
+        // 서버가 받았지만 처리하지 못한 응답도 다시 보낸다
+        if (attempt < maxAttempts && result && result.ok === false &&
             RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
           await new Promise((r) => setTimeout(r, 1500))
           continue
         }
         return result
       } catch (err) {
-        if (!canRetry || attempt >= 2 || !isTransientError(err)) throw err
+        if (attempt >= maxAttempts || !isTransientError(err)) throw err
         await new Promise((r) => setTimeout(r, 1500))
       }
     }
@@ -352,20 +358,8 @@ function isValidPhoneStrict(phone) {
       }
       const payload = { data: { name, phone, email }, requestId: state.pendingCreate.requestId }
 
-      let result
-      try {
-        result = await apiCall('create', payload)
-      } catch (firstErr) {
-        // 응답 지연·일시 오류면 같은 requestId로 1회 재시도 -> 서버가 중복 행을 만들지 않음
-        const msg = String(firstErr && firstErr.message || '')
-        if (msg !== 'TIMEOUT' && !msg.startsWith('HTTP_') && msg !== 'Failed to fetch') throw firstErr
-        result = await apiCall('create', payload)
-      }
-      if (!result.ok && RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
-        // 서버 처리 실패도 같은 requestId로 1회 재시도
-        await new Promise((r) => setTimeout(r, 1500))
-        result = await apiCall('create', payload)
-      }
+      // 같은 requestId로 최대 3번 -> 서버가 같은 손님을 두 번 넣지 않음
+      const result = await apiCall('create', payload, { retry: true })
       if (!result.ok) throw serverError(result, 'CREATE_FAILED')
       state.pendingCreate = null
       showToast('등록 완료', 'success')
