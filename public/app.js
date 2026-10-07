@@ -211,21 +211,51 @@ function isValidPhoneStrict(phone) {
   const MAX_ATTEMPTS = 3
 
   // retry: 같은 요청을 다시 보내도 결과가 같은 경우만 true (등록은 requestId로 서버가 중복을 막아 true로 호출)
+  // 오류 기록 서버로 신호만 보낸다 (손님 이름·번호·이메일은 보내지 않음, 실패해도 화면 동작에 영향 없음)
+  function reportEvent(kind, action, info) {
+    const c = window.APP_CONFIG || {}
+    if (!c.LOG_URL || !c.LOG_KEY) return
+    try {
+      const body = JSON.stringify({
+        key: c.LOG_KEY,
+        store: c.SHOP_NAME || '',
+        kind: kind,
+        action: action,
+        error: String(info.error || ''),
+        attempts: info.attempts || 0,
+        ms: info.ms || 0,
+        detail: String(info.detail || '').slice(0, 100),
+        ua: String(navigator.userAgent || '').slice(0, 120)
+      })
+      const blob = new Blob([body], { type: 'text/plain;charset=utf-8' })
+      if (navigator.sendBeacon && navigator.sendBeacon(c.LOG_URL, blob)) return
+      fetch(c.LOG_URL, { method: 'POST', mode: 'no-cors', keepalive: true, body: blob }).catch(() => {})
+    } catch (e) {}
+  }
+
+  // silent: 호출한 쪽이 결과를 직접 기록할 때 (수정 저장 확인 흐름)
   async function apiCall(action, data = {}, opts = {}) {
     const canRetry = opts.retry !== undefined ? opts.retry : IDEMPOTENT_ACTIONS.indexOf(action) !== -1
     const maxAttempts = canRetry ? MAX_ATTEMPTS : 1
+    const started = Date.now()
+    const report = (kind, info) => { if (!opts.silent) reportEvent(kind, action, Object.assign({ ms: Date.now() - started }, info)) }
     for (let attempt = 1; ; attempt++) {
       try {
         const result = await apiCallOnce(action, data)
+        const retryable = result && result.ok === false && RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1
         // 서버가 받았지만 처리하지 못한 응답도 다시 보낸다
-        if (attempt < maxAttempts && result && result.ok === false &&
-            RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
+        if (attempt < maxAttempts && retryable) {
           await new Promise((r) => setTimeout(r, 1500))
           continue
         }
+        if (retryable) report('failed', { error: result.error, attempts: attempt, detail: result.message })
+        else if (attempt > 1 && result && result.ok) report('recovered', { attempts: attempt })
         return result
       } catch (err) {
-        if (attempt >= maxAttempts || !isTransientError(err)) throw err
+        if (attempt >= maxAttempts || !isTransientError(err)) {
+          if (isTransientError(err)) report('failed', { error: err.message, attempts: attempt })
+          throw err
+        }
         await new Promise((r) => setTimeout(r, 1500))
       }
     }
@@ -496,14 +526,27 @@ function isValidPhoneStrict(phone) {
   }
 
   async function saveWithConfirm(payload, phone, email) {
+    const started = Date.now()
+    const report = (kind, info) => reportEvent(kind, 'update', Object.assign({ ms: Date.now() - started }, info))
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const r = await apiCall('update', payload, { retry: false })
-        if (r.ok || attempt === 2 || RETRYABLE_SERVER_ERRORS.indexOf(r.error) === -1) return r
+        const r = await apiCall('update', payload, { retry: false, silent: true })
+        const retryable = !r.ok && RETRYABLE_SERVER_ERRORS.indexOf(r.error) !== -1
+        if (r.ok || attempt === 2 || !retryable) {
+          if (r.ok && attempt > 1) report('recovered', { attempts: attempt })
+          if (retryable) report('failed', { error: r.error, attempts: attempt, detail: r.message })
+          return r
+        }
       } catch (err) {
         if (!isTransientError(err)) throw err
-        if (await confirmUpdateApplied(payload.id, phone, email)) return { ok: true, id: payload.id }
-        if (attempt === 2) throw err
+        if (await confirmUpdateApplied(payload.id, phone, email)) {
+          report('confirmed', { error: err.message, attempts: attempt })
+          return { ok: true, id: payload.id }
+        }
+        if (attempt === 2) {
+          report('failed', { error: err.message, attempts: attempt })
+          throw err
+        }
       }
       await new Promise((r) => setTimeout(r, 1500))
     }
