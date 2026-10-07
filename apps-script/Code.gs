@@ -105,7 +105,7 @@ function handleRequest(e, method) {
         return jsonResponse({ ok: false, error: 'UNKNOWN_ACTION' })
     }
   } catch (err) {
-    Logger.log('handleRequest error: ' + err.stack)
+    console.error('handleRequest error: ' + err.stack)
     return jsonResponse({ ok: false, error: 'SERVER_ERROR', message: String(err) })
   }
 }
@@ -305,6 +305,10 @@ function listWaiting() {
 // 같은 등록 요청이 두 번 들어오면(응답 지연 후 재시도) 처음 결과를 돌려주고 행을 추가하지 않음
 const CREATE_DEDUP_TTL_SEC = 21600
 
+// 등록·수정이 동시에 들어올 때 앞 요청을 기다리는 최대 시간
+// 태블릿 대기 시간(30초) 안에 응답이 돌아가도록 20초로 둔다
+const LOCK_WAIT_MS = 20000
+
 function normalizeRequestId(requestId) {
   const rid = String(requestId || '').trim()
   return /^[A-Za-z0-9-]{8,64}$/.test(rid) ? rid : ''
@@ -342,9 +346,8 @@ function createEntry(data, requestId) {
   const formattedPhone = formatPhoneByLength(phone)
 
   const lock = LockService.getScriptLock()
+  if (!lock.tryLock(LOCK_WAIT_MS)) return { ok: false, error: 'BUSY' }
   try {
-    lock.waitLock(10000)
-
     // 락 대기 중 같은 요청이 먼저 처리됐을 수 있어 다시 확인
     const cachedInLock = getCachedCreate(cache, rid)
     if (cachedInLock) return cachedInLock
@@ -379,12 +382,20 @@ function createEntry(data, requestId) {
     }
 
     sheet.getRange(targetRow, 1, 1, lastCol).setValues([newRow])
+    // 잠금을 풀기 전에 기록을 확정해야 바로 뒤 등록이 같은 행을 덮어쓰지 않음
+    SpreadsheetApp.flush()
 
     const result = { ok: true, id: id, name: name, date: today, rowIndex: targetRow }
-    if (rid) cache.put('create:' + rid, JSON.stringify(result), CREATE_DEDUP_TTL_SEC)
+    if (rid) {
+      try {
+        cache.put('create:' + rid, JSON.stringify(result), CREATE_DEDUP_TTL_SEC)
+      } catch (cacheErr) {
+        console.warn('createEntry cache error: ' + cacheErr)
+      }
+    }
     return result
   } catch (err) {
-    Logger.log('createEntry error: ' + err.stack)
+    console.error('createEntry error: ' + err.stack)
     return { ok: false, error: 'CREATE_FAILED', message: String(err) }
   } finally {
     try { lock.releaseLock() } catch (e) {}
@@ -463,9 +474,8 @@ function updateEntry(id, data, last4) {
   const formattedPhone = formatPhoneByLength(phone)
 
   const lock = LockService.getScriptLock()
+  if (!lock.tryLock(LOCK_WAIT_MS)) return { ok: false, error: 'BUSY' }
   try {
-    lock.waitLock(10000)
-
     const sheet = getSheet()
     const { map } = getHeaderMap(sheet)
     const row = findRowById(id)
@@ -479,10 +489,11 @@ function updateEntry(id, data, last4) {
     if (map['이메일'] !== undefined) {
       sheet.getRange(row.rowIndex, map['이메일'] + 1).setValue(email)
     }
+    SpreadsheetApp.flush()
 
     return { ok: true, id: id }
   } catch (err) {
-    Logger.log('updateEntry error: ' + err.stack)
+    console.error('updateEntry error: ' + err.stack)
     return { ok: false, error: 'UPDATE_FAILED', message: String(err) }
   } finally {
     try { lock.releaseLock() } catch (e) {}
