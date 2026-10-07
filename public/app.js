@@ -185,7 +185,8 @@ function isValidPhoneStrict(phone) {
   const IDEMPOTENT_ACTIONS = ['list', 'verify', 'update', 'ping']
 
   // 서버가 요청을 받았지만 시트 쪽 지연·잠금 대기로 처리하지 못한 경우 -> 다시 보내면 대부분 처리됨
-  const RETRYABLE_SERVER_ERRORS = ['BUSY', 'CREATE_FAILED', 'UPDATE_FAILED', 'SERVER_ERROR']
+  // UNAUTHORIZED: 요청 내용이 비어서 도착하는 일시 현상 대응 (토큰이 틀리면 재시도도 같은 결과)
+  const RETRYABLE_SERVER_ERRORS = ['BUSY', 'CREATE_FAILED', 'UPDATE_FAILED', 'SERVER_ERROR', 'UNAUTHORIZED']
 
   function serverError(result, fallback) {
     const err = new Error((result && result.error) || fallback)
@@ -206,12 +207,21 @@ function isValidPhoneStrict(phone) {
   }
 
   async function apiCall(action, data = {}) {
-    try {
-      return await apiCallOnce(action, data)
-    } catch (err) {
-      if (IDEMPOTENT_ACTIONS.indexOf(action) === -1 || !isTransientError(err)) throw err
-      await new Promise((r) => setTimeout(r, 1500))
-      return await apiCallOnce(action, data)
+    const canRetry = IDEMPOTENT_ACTIONS.indexOf(action) !== -1
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const result = await apiCallOnce(action, data)
+        // 서버가 받았지만 처리하지 못한 응답도 1회 다시 보낸다
+        if (canRetry && attempt < 2 && result && result.ok === false &&
+            RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
+          await new Promise((r) => setTimeout(r, 1500))
+          continue
+        }
+        return result
+      } catch (err) {
+        if (!canRetry || attempt >= 2 || !isTransientError(err)) throw err
+        await new Promise((r) => setTimeout(r, 1500))
+      }
     }
   }
 
@@ -504,12 +514,8 @@ function isValidPhoneStrict(phone) {
         last4: state.verifiedLast4,
         data: { phone, email }
       }
-      let result = await apiCall('update', updatePayload)
-      if (!result.ok && RETRYABLE_SERVER_ERRORS.indexOf(result.error) !== -1) {
-        // 같은 값을 다시 쓰는 요청이라 1회 재시도해도 결과가 같음
-        await new Promise((r) => setTimeout(r, 1500))
-        result = await apiCall('update', updatePayload)
-      }
+      // 같은 값을 다시 쓰는 요청이라 apiCall 안에서 1회 재시도
+      const result = await apiCall('update', updatePayload)
 
       if (!result.ok) throw serverError(result, 'UPDATE_FAILED')
 
