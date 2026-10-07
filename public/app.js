@@ -482,6 +482,33 @@ function isValidPhoneStrict(phone) {
     resetForm();
   }
 
+  // 수정 요청은 서버에서 저장까지 끝났는데 응답만 사라지는 경우가 있다 (2026-10-07 성동 실측)
+  // 응답이 끊기면 번호 확인으로 실제 저장 여부를 읽어 보고, 저장돼 있으면 성공으로 처리한다
+  async function confirmUpdateApplied(id, phone, email) {
+    const digits = extractDigits(phone)
+    try {
+      const r = await apiCall('verify', { id: id, last4: digits.slice(-4) })
+      return !!(r && r.ok && extractDigits(String(r.phone || '')) === digits &&
+        String(r.email || '').trim() === email)
+    } catch (e) {
+      return false
+    }
+  }
+
+  async function saveWithConfirm(payload, phone, email) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const r = await apiCall('update', payload, { retry: false })
+        if (r.ok || attempt === 2 || RETRYABLE_SERVER_ERRORS.indexOf(r.error) === -1) return r
+      } catch (err) {
+        if (!isTransientError(err)) throw err
+        if (await confirmUpdateApplied(payload.id, phone, email)) return { ok: true, id: payload.id }
+        if (attempt === 2) throw err
+      }
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+  }
+
   async function handleEditSave() {
     if (!state.authTarget || !state.verifiedLast4) {
       await showMessage('세션이 만료되었습니다 다시 시도해주세요')
@@ -508,8 +535,7 @@ function isValidPhoneStrict(phone) {
         last4: state.verifiedLast4,
         data: { phone, email }
       }
-      // 같은 값을 다시 쓰는 요청이라 apiCall 안에서 1회 재시도
-      const result = await apiCall('update', updatePayload)
+      const result = await saveWithConfirm(updatePayload, phone, email)
 
       if (!result.ok) throw serverError(result, 'UPDATE_FAILED')
 
