@@ -24,6 +24,10 @@ window.APP_CONFIG = {
   // 대기리스트 자동 새로고침 주기 (ms) - 0이면 비활성화
   AUTO_REFRESH_MS: 30000,
 
+  // 오류 기록 서버 (유지보수 담당 계정) - 비우면 기록하지 않음
+  LOG_URL: 'https://script.google.com/macros/s/AKfycbwENU7-skhCkfHTcXk127eXLhcVjBlz5lG4urvi8Gw4wGJV7MqhMvLwqSCQPn2jOERX5A/exec',
+  LOG_KEY: 'ifc-bda3f1c3bd971d81d23ee7b4',
+
   // 요청 타임아웃 (ms)
   // 요청 1번당 대기 시간 (실패하면 최대 3번까지 다시 보냄)
   REQUEST_TIMEOUT_MS: 15000
