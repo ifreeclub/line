@@ -26,8 +26,12 @@
     verifiedLast4: null,   // 인증 성공한 끝4자리
     isSubmitting: false,
     pendingCreate: null,   // { key, requestId } - 같은 입력 재전송 시 동일 requestId 재사용
-    isLoading: false
+    isLoading: false,
+    listOkAt: 0            // 대기목록을 마지막으로 불러온 시각 (ms)
   }
+
+  // 대기목록 새로고침이 실패해도 이 시간 안에 불러온 목록이 있으면 오류 대신 그 목록을 그대로 둔다
+  const LIST_STALE_MS = 120000
 
   // ============================================================
   // DOM 참조
@@ -313,9 +317,11 @@ function isValidPhoneStrict(phone) {
       const result = await apiCall('list')
       if (!result.ok) throw new Error(result.error || 'LOAD_FAILED')
       state.waitlist = result.list || []
+      state.listOkAt = Date.now()
       renderWaitlist()
     } catch (err) {
       console.error('loadWaitlist error:', err)
+      if (state.listOkAt && Date.now() - state.listOkAt < LIST_STALE_MS) return
       renderWaitlistError(err.message)
     } finally {
       state.isLoading = false
