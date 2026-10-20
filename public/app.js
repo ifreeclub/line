@@ -152,12 +152,24 @@ function isValidPhoneStrict(phone) {
   // 메시지 모달 (재진입 안전)
   // ============================================================
 
+  // 안내창이 떠 있는 동안은 대기목록 자동 새로고침이 멈추므로, 아무도 닫지 않으면 이 시간 뒤 스스로 닫는다
+  const MESSAGE_AUTO_CLOSE_MS = 15000
+
   let messageResolve = null
+  let messageTimer = null
+  function closeMessage() {
+    clearTimeout(messageTimer)
+    messageTimer = null
+    els.modalMessage.hidden = true
+    if (messageResolve) { const r = messageResolve; messageResolve = null; r() }
+  }
   function showMessage(message) {
     return new Promise((resolve) => {
+      clearTimeout(messageTimer)
       els.modalMessageText.textContent = message
       els.modalMessage.hidden = false
       messageResolve = resolve
+      messageTimer = setTimeout(closeMessage, MESSAGE_AUTO_CLOSE_MS)
     })
   }
 
@@ -238,11 +250,15 @@ function isValidPhoneStrict(phone) {
   }
 
   // silent: 호출한 쪽이 결과를 직접 기록할 때 (수정 저장 확인 흐름)
+  // quietFail: 실패 기록만 호출한 쪽에 맡길 때 (등록 확인 흐름 - 실제로 저장됐으면 실패로 남기지 않음)
   async function apiCall(action, data = {}, opts = {}) {
     const canRetry = opts.retry !== undefined ? opts.retry : IDEMPOTENT_ACTIONS.indexOf(action) !== -1
     const maxAttempts = canRetry ? MAX_ATTEMPTS : 1
     const started = Date.now()
-    const report = (kind, info) => { if (!opts.silent) reportEvent(kind, action, Object.assign({ ms: Date.now() - started }, info)) }
+    const report = (kind, info) => {
+      if (opts.silent || (opts.quietFail && kind === 'failed')) return
+      reportEvent(kind, action, Object.assign({ ms: Date.now() - started }, info))
+    }
     for (let attempt = 1; ; attempt++) {
       try {
         const result = await apiCallOnce(action, data)
@@ -387,6 +403,10 @@ function isValidPhoneStrict(phone) {
     els.btnSubmit.disabled = true
     els.btnSubmit.textContent = '등록 중...'
 
+    // 등록 전 대기목록에 있던 번호 -> 응답을 못 받았을 때 새로 생긴 줄로 등록 여부를 확인한다
+    const beforeIds = new Set(state.waitlist.map((item) => item.id))
+    const started = Date.now()
+
     try {
       const key = [name, phone, email].join('|')
       if (!state.pendingCreate || state.pendingCreate.key !== key) {
@@ -395,20 +415,59 @@ function isValidPhoneStrict(phone) {
       const payload = { data: { name, phone, email }, requestId: state.pendingCreate.requestId }
 
       // 같은 requestId로 최대 3번 -> 서버가 같은 손님을 두 번 넣지 않음
-      const result = await apiCall('create', payload, { retry: true })
+      const result = await apiCall('create', payload, { retry: true, quietFail: true })
       if (!result.ok) throw serverError(result, 'CREATE_FAILED')
-      state.pendingCreate = null
-      showToast('등록 완료', 'success')
-      resetForm()
+      finishCreate()
       await loadWaitlist()
     } catch (err) {
       console.error('submit error:', err)
+      if (isUncertainCreateError(err)) {
+        els.btnSubmit.textContent = '접수 확인 중...'
+        if (await confirmCreated(name, beforeIds)) {
+          reportEvent('confirmed', 'create', { error: err.message, attempts: MAX_ATTEMPTS, ms: Date.now() - started })
+          finishCreate()
+          return
+        }
+        els.btnSubmit.textContent = '등록 중...'
+        reportEvent('failed', 'create', { error: err.message, attempts: MAX_ATTEMPTS, ms: Date.now() - started, detail: err.detail })
+      }
       await showMessage('등록 실패\n' + errorText(err))
     } finally {
       state.isSubmitting = false
       els.btnSubmit.disabled = false
       els.btnSubmit.textContent = '등록'
     }
+  }
+
+  function finishCreate() {
+    state.pendingCreate = null
+    showToast('등록 완료', 'success')
+    resetForm()
+  }
+
+  // 응답이 끊겨서 서버가 저장했는지 알 수 없는 오류 (입력값 오류는 제외)
+  function isUncertainCreateError(err) {
+    return isTransientError(err) || RETRYABLE_SERVER_ERRORS.indexOf(err && err.message) !== -1
+  }
+
+  // 대기목록을 다시 불러와 등록 전에 없던 같은 이름 줄이 생겼으면 저장된 것으로 본다
+  const CONFIRM_ATTEMPTS = 2
+  async function confirmCreated(name, beforeIds) {
+    for (let attempt = 1; attempt <= CONFIRM_ATTEMPTS; attempt++) {
+      try {
+        const result = await apiCallOnce('list')
+        if (result && result.ok) {
+          state.waitlist = result.list || []
+          state.listOkAt = Date.now()
+          renderWaitlist()
+          return state.waitlist.some((item) => item.name === name && !beforeIds.has(item.id))
+        }
+      } catch (e) {
+        console.warn('confirmCreated:', e)
+      }
+      if (attempt < CONFIRM_ATTEMPTS) await new Promise((r) => setTimeout(r, 1500))
+    }
+    return false
   }
 
   function resetForm() {
@@ -687,19 +746,13 @@ function isValidPhoneStrict(phone) {
     els.btnEditSave.addEventListener('click', handleEditSave)
     els.btnEditCancel.addEventListener('click', closeEditModal)
 
-    els.btnMessageOk.addEventListener('click', () => {
-      els.modalMessage.hidden = true
-      if (messageResolve) { messageResolve(); messageResolve = null }
-    })
+    els.btnMessageOk.addEventListener('click', closeMessage)
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (!els.modalAuth.hidden) cancelAuthModal()
         else if (!els.modalEdit.hidden) closeEditModal()
-        else if (!els.modalMessage.hidden) {
-          els.modalMessage.hidden = true
-          if (messageResolve) { messageResolve(); messageResolve = null }
-        }
+        else if (!els.modalMessage.hidden) closeMessage()
       }
     })
 
